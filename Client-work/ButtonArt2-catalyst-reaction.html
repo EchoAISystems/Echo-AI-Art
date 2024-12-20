@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #111; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            width: 100vw;
+            height: 100vh;
+        }
+        #triggerButton {
+            position: relative;
+            z-index: 2;
+            padding: 15px 30px;
+            font-size: 18px;
+            background: rgba(30, 30, 30, 0.8);
+            color: #fff;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Arial', sans-serif;
+            outline: none;
+            overflow: hidden;
+        }
+        #triggerButton:hover {
+            background: rgba(40, 40, 40, 0.9);
+            transform: scale(1.05);
+        }
+        #triggerButton:active {
+            transform: scale(0.95);
+        }
+        #debug {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            z-index: 100;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <button id="triggerButton">Ignite Change</button>
+    <div id="debug"></div>
+
+    <script>
+        function initWebGL() {
+            function debug(msg) {
+                document.getElementById('debug').textContent = msg;
+            }
+
+            const canvas = document.getElementById('canvas');
+            const gl = canvas.getContext('webgl');
+            const button = document.getElementById('triggerButton');
+
+            if (!gl) {
+                debug('WebGL not supported');
+                console.error('WebGL not supported');
+                return;
+            }
+
+            debug('WebGL initialized');
+
+            const vertexShaderSource = `
+                attribute vec2 position;
+                uniform float pointSize;
+                uniform vec2 resolution;
+                
+                void main() {
+                    vec2 normalized = position / resolution * 2.0 - 1.0;
+                    gl_Position = vec4(normalized.x, -normalized.y, 0, 1);
+                    gl_PointSize = pointSize;
+                }
+            `;
+
+            const fragmentShaderSource = `
+                precision mediump float;
+                
+                uniform vec3 color;
+                uniform float alpha;
+                
+                void main() {
+                    vec2 center = gl_PointCoord * 2.0 - 1.0;
+                    float dist = length(center);
+                    float glow = exp(-dist * 2.0);
+                    gl_FragColor = vec4(color * glow, alpha * (1.0 - dist));
+                }
+            `;
+
+            function createShader(type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                    gl.deleteShader(shader);
+                    return null;
+                }
+                return shader;
+            }
+
+            const vertexShader = createShader(gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program link error:', gl.getProgramInfoLog(program));
+                return;
+            }
+
+            gl.useProgram(program);
+
+            const positionLocation = gl.getAttribLocation(program, 'position');
+            const pointSizeLocation = gl.getUniformLocation(program, 'pointSize');
+            const resolutionLocation = gl.getUniformLocation(program, 'resolution');
+            const colorLocation = gl.getUniformLocation(program, 'color');
+            const alphaLocation = gl.getUniformLocation(program, 'alpha');
+
+            const positionBuffer = gl.createBuffer();
+
+            class Particle {
+                constructor(x, y) {
+                    this.x = x;
+                    this.y = y;
+                    this.vx = (Math.random() - 0.5) * 2;
+                    this.vy = -Math.random() * 6 - 4;
+                    this.life = 1.0;
+                    this.decay = 0.01 + Math.random() * 0.005;
+                    this.exploded = false;
+                    this.explodeTime = 45 + Math.random() * 30;
+                    this.size = 8 + Math.random() * 4;
+                    
+                    const hue = 200 + Math.random() * 60;
+                    this.color = hslToRgb(hue/360, 1.0, 0.8);
+                }
+
+                update() {
+                    if (!this.exploded && this.explodeTime <= 0) {
+                        this.explode();
+                    }
+
+                    this.explodeTime--;
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    
+                    if (!this.exploded) {
+                        this.vy += 0.05;
+                    } else {
+                        this.vy += 0.1;
+                    }
+                    
+                    this.life -= this.decay;
+                }
+
+                explode() {
+                    this.exploded = true;
+                    this.vx = (Math.random() - 0.5) * 12;
+                    this.vy = (Math.random() - 0.5) * 12;
+                    this.decay = 0.02 + Math.random() * 0.01;
+                }
+            }
+
+            let particles = [];
+            let isAnimating = false;
+
+            function createParticles(x, y) {
+                debug('Creating particles at ' + x + ',' + y);
+                const count = 200;
+                const rect = button.getBoundingClientRect();
+                
+                for (let i = 0; i < count; i++) {
+                    // Calculate position around button perimeter
+                    const angle = (i / count) * Math.PI * 2;
+                    const radius = Math.min(rect.width, rect.height) / 2;
+                    const startX = x + Math.cos(angle) * radius;
+                    const startY = y + Math.sin(angle) * radius;
+                    particles.push(new Particle(startX, startY));
+                }
+            }
+
+            function hslToRgb(h, s, l) {
+                let r, g, b;
+
+                if (s === 0) {
+                    r = g = b = l;
+                } else {
+                    const hue2rgb = (p, q, t) => {
+                        if (t < 0) t += 1;
+                        if (t > 1) t -= 1;
+                        if (t < 1/6) return p + (q - p) * 6 * t;
+                        if (t < 1/2) return q;
+                        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                        return p;
+                    };
+
+                    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                    const p = 2 * l - q;
+                    r = hue2rgb(p, q, h + 1/3);
+                    g = hue2rgb(p, q, h);
+                    b = hue2rgb(p, q, h - 1/3);
+                }
+
+                return [r, g, b];
+            }
+
+            function animate() {
+                if (particles.length === 0) {
+                    isAnimating = false;
+                    return;
+                }
+
+                resizeCanvas();
+                gl.clear(gl.COLOR_BUFFER_BIT);
+
+                const positions = [];
+                particles = particles.filter(particle => {
+                    particle.update();
+                    
+                    if (particle.life > 0) {
+                        positions.push(particle.x, particle.y);
+                        return true;
+                    }
+                    return false;
+                });
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+                gl.enableVertexAttribArray(positionLocation);
+                gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+                particles.forEach((particle, i) => {
+                    gl.uniform1f(pointSizeLocation, particle.size * (particle.exploded ? 2 : 1));
+                    gl.uniform3fv(colorLocation, particle.color);
+                    gl.uniform1f(alphaLocation, particle.life);
+                    gl.drawArrays(gl.POINTS, i, 1);
+                });
+
+                requestAnimationFrame(animate);
+            }
+
+            function resizeCanvas() {
+                const displayWidth = window.innerWidth;
+                const displayHeight = window.innerHeight;
+
+                if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                    canvas.width = displayWidth;
+                    canvas.height = displayHeight;
+                    gl.viewport(0, 0, canvas.width, canvas.height);
+                    gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+                }
+            }
+
+            function init() {
+                debug('Initializing');
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                gl.viewport(0, 0, canvas.width, canvas.height);
+                gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+                
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+                gl.clearColor(0, 0, 0, 0);
+
+                window.addEventListener('resize', resizeCanvas);
+                button.addEventListener('click', (e) => {
+                    debug('Button clicked');
+                    const rect = button.getBoundingClientRect();
+                    const x = rect.left + rect.width / 2;
+                    const y = rect.top;
+                    createParticles(x, y);
+                    
+                    if (!isAnimating) {
+                        isAnimating = true;
+                        animate();
+                    }
+                });
+
+                resizeCanvas();
+                debug('Initialization complete');
+            }
+
+            init();
+        }
+
+        // Start the WebGL initialization
+        initWebGL();
+    </script>
+</body>
+</html>

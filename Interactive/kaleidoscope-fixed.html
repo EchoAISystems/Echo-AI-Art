@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Echo's Kaleidoscopic Vision</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        function initWebGL() {
+            // Initialize WebGL context
+            const canvas = document.getElementById('glCanvas');
+            const gl = canvas.getContext('webgl');
+            
+            if (!gl) {
+                alert('WebGL not available');
+                return null;
+            }
+
+            // Set canvas size to window size
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                gl.viewport(0, 0, canvas.width, canvas.height);
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            // Vertex shader - handles geometry
+            const vertexShaderSource = `
+                attribute vec4 aVertexPosition;
+                varying vec2 vUV;
+                void main() {
+                    gl_Position = aVertexPosition;
+                    vUV = aVertexPosition.xy * 0.5 + 0.5;
+                }
+            `;
+
+            // Fragment shader - creates the kaleidoscopic effect
+            const fragmentShaderSource = `
+                precision highp float;
+                varying vec2 vUV;
+                uniform float uTime;
+                uniform vec2 uResolution;
+
+                const float PI = 3.14159265359;
+                const float segments = 8.0;
+
+                vec2 rotate2D(vec2 position, float angle) {
+                    float s = sin(angle);
+                    float c = cos(angle);
+                    return mat2(c, -s, s, c) * position;
+                }
+
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+
+                void main() {
+                    vec2 uv = (vUV * 2.0 - 1.0) * (uResolution.xy / min(uResolution.x, uResolution.y));
+                    
+                    // Create kaleidoscopic symmetry
+                    float angle = atan(uv.y, uv.x);
+                    float segment = floor(angle / PI * segments + 0.5);
+                    angle = segment * PI / segments;
+                    uv = rotate2D(uv, angle);
+                    
+                    // Add time-based animation
+                    float dist = length(uv);
+                    vec2 pos = vec2(
+                        dist * 2.0 + sin(uTime * 0.5) * 0.5,
+                        atan(uv.y, uv.x) * 2.0 + cos(uTime * 0.3) * 0.5
+                    );
+                    
+                    // Create psychedelic pattern
+                    float pattern = sin(pos.x * 10.0 + uTime) * 
+                                  cos(pos.y * 8.0 - uTime * 0.5) *
+                                  sin(dist * 5.0 - uTime * 0.7);
+                    
+                    // Add more complex layering
+                    pattern += sin(pos.x * 15.0 - uTime * 0.3) * 
+                              cos(pos.y * 12.0 + uTime * 0.2) * 0.5;
+                    
+                    // Dynamic color based on position and time
+                    vec3 color = hsv2rgb(vec3(
+                        pattern * 0.5 + uTime * 0.1,
+                        0.8,
+                        0.8 + sin(pattern * PI) * 0.2
+                    ));
+                    
+                    // Add glow effect
+                    float glow = exp(-dist * 2.0);
+                    color += vec3(0.2, 0.4, 0.8) * glow;
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `;
+
+            // Create and compile shader helper function
+            function createShader(gl, type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                    gl.deleteShader(shader);
+                    return null;
+                }
+                return shader;
+            }
+
+            // Create shaders
+            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+            if (!vertexShader || !fragmentShader) {
+                return null;
+            }
+
+            // Create shader program
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program link error:', gl.getProgramInfoLog(program));
+                return null;
+            }
+
+            // Set up geometry (full screen quad)
+            const positions = new Float32Array([
+                -1.0, -1.0,
+                 1.0, -1.0,
+                -1.0,  1.0,
+                 1.0,  1.0
+            ]);
+
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+            return {
+                gl,
+                program,
+                canvas,
+                positionBuffer,
+                positionLocation: gl.getAttribLocation(program, 'aVertexPosition'),
+                timeLocation: gl.getUniformLocation(program, 'uTime'),
+                resolutionLocation: gl.getUniformLocation(program, 'uResolution')
+            };
+        }
+
+        // Initialize WebGL context and resources
+        const webgl = initWebGL();
+        if (!webgl) {
+            console.error('Failed to initialize WebGL');
+        } else {
+            // Animation loop
+            const startTime = Date.now();
+            function render() {
+                const { gl, program, canvas, positionBuffer, positionLocation, timeLocation, resolutionLocation } = webgl;
+                const currentTime = (Date.now() - startTime) * 0.001;  // Convert to seconds
+
+                gl.useProgram(program);
+
+                // Update uniforms
+                gl.uniform1f(timeLocation, currentTime);
+                gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+
+                // Set up position attribute
+                gl.enableVertexAttribArray(positionLocation);
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+                // Draw
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                requestAnimationFrame(render);
+            }
+
+            // Start animation loop
+            render();
+
+            // Add mouse interaction
+            let mouseX = 0, mouseY = 0;
+            webgl.canvas.addEventListener('mousemove', (e) => {
+                mouseX = e.clientX / webgl.canvas.width;
+                mouseY = e.clientY / webgl.canvas.height;
+            });
+        }
+    </script>
+</body>
+</html>
