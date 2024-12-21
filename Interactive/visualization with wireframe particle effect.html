@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Complex Kaleidoscope Flow with Particles</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            position: absolute;
+        }
+        #particleCanvas {
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <canvas id="particleCanvas"></canvas>
+    <script>
+        // Previous WebGL code remains the same until the fragment shader
+        function initWebGL() {
+            const canvas = document.getElementById('glCanvas');
+            const gl = canvas.getContext('webgl');
+            
+            if (!gl) {
+                alert('WebGL not available');
+                return null;
+            }
+
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            const vertexShaderSource = `
+                attribute vec4 aPosition;
+                varying vec2 vUv;
+                void main() {
+                    gl_Position = aPosition;
+                    vUv = aPosition.xy * 0.5 + 0.5;
+                }
+            `;
+
+            // Enhanced fragment shader with more effects
+            const fragmentShaderSource = `
+                precision highp float;
+                varying vec2 vUv;
+                uniform float uTime;
+                uniform vec2 uResolution;
+                uniform vec2 uMouse;
+
+                #define PI 3.14159265359
+                #define TWO_PI 6.28318530718
+
+                // Previous helper functions remain the same
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+
+                float random(vec2 st) {
+                    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+                }
+
+                vec2 rotate2D(vec2 p, float angle) {
+                    float s = sin(angle);
+                    float c = cos(angle);
+                    return vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+                }
+
+                // Enhanced noise function
+                float noise(vec2 st) {
+                    vec2 i = floor(st);
+                    vec2 f = fract(st);
+                    float a = random(i);
+                    float b = random(i + vec2(1.0, 0.0));
+                    float c = random(i + vec2(0.0, 1.0));
+                    float d = random(i + vec2(1.0, 1.0));
+                    vec2 u = f * f * (3.0 - 2.0 * f);
+                    return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+                }
+
+                // Enhanced FBM
+                float fbm(vec2 st) {
+                    float value = 0.0;
+                    float amplitude = 0.5;
+                    float frequency = 0.;
+                    float lacunarity = 2.0;
+                    float gain = 0.5;
+                    mat2 rotation = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
+                    
+                    for(int i = 0; i < 6; i++) {
+                        value += amplitude * noise(st);
+                        st = rotation * st * lacunarity;
+                        amplitude *= gain;
+                    }
+                    return value;
+                }
+
+                // New effect: Electric field
+                float electricField(vec2 uv, float time) {
+                    float result = 0.0;
+                    for(int i = 0; i < 3; i++) {
+                        float fi = float(i);
+                        result += sin(uv.x * 10.0 + time + fi) * cos(uv.y * 8.0 - time * 0.5 + fi);
+                    }
+                    return result * 0.5 + 0.5;
+                }
+
+                // New effect: Ripple
+                float ripple(vec2 uv, vec2 center, float time) {
+                    float dist = length(uv - center);
+                    return sin(dist * 20.0 - time * 2.0) * exp(-dist * 3.0);
+                }
+
+                void main() {
+                    vec2 uv = (vUv * 2.0 - 1.0) * (uResolution.xy / min(uResolution.x, uResolution.y));
+                    vec2 mouse = (uMouse * 2.0 - 1.0) * (uResolution.xy / min(uResolution.x, uResolution.y));
+                    
+                    float dist = length(uv);
+                    float angle = atan(uv.y, uv.x);
+                    
+                    // Dynamic kaleidoscope segments
+                    float segments = 8.0 + sin(uTime * 0.2) * 2.0;
+                    angle = mod(angle, TWO_PI / segments) - PI / segments;
+                    vec2 kaleidoUv = vec2(cos(angle), sin(angle)) * dist;
+                    
+                    // Multiple layers of patterns
+                    float t = uTime * 0.5;
+                    vec2 rotatedUv = rotate2D(kaleidoUv, t * 0.3);
+                    float pattern1 = fbm(rotatedUv * 3.0 + t);
+                    
+                    vec2 rotatedUv2 = rotate2D(kaleidoUv, -t * 0.2);
+                    float pattern2 = fbm(rotatedUv2 * 5.0 - t * 0.5);
+                    
+                    // Electric field effect
+                    float electric = electricField(rotatedUv, t);
+                    
+                    // Ripple effect from mouse position
+                    float ripples = ripple(uv, mouse, t);
+                    
+                    // Combine patterns
+                    float finalPattern = pattern1 * 0.5 + pattern2 * 0.3 + electric * 0.2 + ripples * 0.3;
+                    
+                    // Enhanced mouse interaction
+                    float mouseDist = length(uv - mouse);
+                    float mouseInfluence = smoothstep(0.5, 0.0, mouseDist);
+                    finalPattern += mouseInfluence * 0.3;
+                    
+                    // Dynamic color palette
+                    vec3 color1 = hsv2rgb(vec3(t * 0.1 + finalPattern * 0.2, 0.8, 0.9));
+                    vec3 color2 = hsv2rgb(vec3(t * 0.15 + finalPattern * 0.3 + 0.3, 0.7, 0.8));
+                    vec3 color3 = hsv2rgb(vec3(t * 0.2 + finalPattern * 0.1 + 0.6, 0.9, 0.7));
+                    
+                    vec3 finalColor = mix(color1, color2, pattern1);
+                    finalColor = mix(finalColor, color3, pattern2 * 0.6);
+                    
+                    // Add electric highlights
+                    finalColor += vec3(0.5, 0.7, 1.0) * electric * 0.3;
+                    
+                    // Add ripple highlights
+                    finalColor += vec3(0.3, 0.5, 1.0) * ripples * 0.5;
+                    
+                    // Enhanced glow
+                    float glow = exp(-dist * 2.0) * 0.5;
+                    finalColor += vec3(0.2, 0.4, 0.6) * glow;
+                    
+                    // Edge effects
+                    float edge = smoothstep(0.8, 0.4, dist);
+                    finalColor *= edge;
+                    
+                    // Pulsing
+                    finalColor *= 1.0 + sin(uTime) * 0.1;
+                    
+                    // Chromatic aberration
+                    float aberration = 0.02;
+                    vec3 colorShift;
+                    colorShift.r = fbm(kaleidoUv * (1.0 + aberration) + t);
+                    colorShift.g = fbm(kaleidoUv + t);
+                    colorShift.b = fbm(kaleidoUv * (1.0 - aberration) + t);
+                    finalColor += colorShift * 0.1;
+                    
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `;
+
+            // ... (rest of WebGL initialization code remains the same)
+
+            function createShader(type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                    gl.deleteShader(shader);
+                    return null;
+                }
+                return shader;
+            }
+
+            const vertexShader = createShader(gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+            const positions = new Float32Array([
+                -1, -1,
+                1, -1,
+                -1, 1,
+                1, 1
+            ]);
+
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+            return {
+                gl,
+                program,
+                positionBuffer,
+                positionAttribute: gl.getAttribLocation(program, 'aPosition'),
+                timeUniform: gl.getUniformLocation(program, 'uTime'),
+                resolutionUniform: gl.getUniformLocation(program, 'uResolution'),
+                mouseUniform: gl.getUniformLocation(program, 'uMouse')
+            };
+        }
+
+        // Particle System
+        class ParticleSystem {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.particles = [];
+                this.maxParticles = 100;
+                this.mouseX = 0;
+                this.mouseY = 0;
+            }
+
+            createParticle(x, y) {
+                return {
+                    x: x || Math.random() * this.canvas.width,
+                    y: y || Math.random() * this.canvas.height,
+                    size: Math.random() * 3 + 1,
+                    speedX: Math.random() * 4 - 2,
+                    speedY: Math.random() * 4 - 2,
+                    life: 1,
+                    color: `hsla(${Math.random() * 60 + 200}, 80%, 50%, `
+                };
+            }
+
+            update() {
+                // Create particles at mouse position
+                if (Math.random() < 0.3) {
+                    this.particles.push(this.createParticle(this.mouseX, this.mouseY));
+                }
+
+                // Update particles
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    
+                    p.life -= 0.01;
+                    p.x += p.speedX;
+                    p.y += p.speedY;
+
+                    // Mouse attraction
+                    const dx = this.mouseX - p.x;
+                    const dy = this.mouseY - p.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 200) {
+                        p.speedX += dx * 0.0003;
+                        p.speedY += dy * 0.0003;
+                    }
+
+                    // Remove dead particles
+                    if (p.life <= 0) {
+                        this.particles.splice(i, 1);
+                    }
+                }
+
+                // Add new particles if needed
+                while (this.particles.length < this.maxParticles) {
+                    this.particles.push(this.createParticle());
+                }
+            }
+
+            draw() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                this.particles.forEach(p => {
+                    this.ctx.beginPath();
+                    this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    this.ctx.fillStyle = p.color + p.life + ')';
+                    this.ctx.fill();
+
+                    // Draw connecting lines
+                    this.particles.forEach(p2 => {
+                        const dx = p.x - p2.x;
+                        const dy = p.y - p2.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 100) {
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(p.x, p.y);
+                            this.ctx.lineTo(p2.x, p2.y);
+                            this.ctx.strokeStyle = `rgba(100, 200, 255, ${(1 - dist / 100) * 0.2})`;
+                            this.ctx.stroke();
+                        }
+                    });
+                });
+            }
+        }
+
+        // Initialize both WebGL and Particle system
+        const webgl = initWebGL();
+        const particleCanvas = document.getElementById('particleCanvas');
+        particleCanvas.width = window.innerWidth;
+        particleCanvas.height = window.innerHeight;
+        const particles = new ParticleSystem(particleCanvas);
+
+        if (webgl) {
+            let mouseX = 0, mouseY = 0;
+            
+            document.addEventListener('mousemove', (e) => {
+                const rect = webgl.gl.canvas.getBoundingClientRect();
+                mouseX = (e.clientX - rect.left) / rect.width * 2 - 1;
+                mouseY = 1 - (e.clientY - rect.top) / rect.height * 2;
+                
+                // Update particle system mouse position
+                particles.mouseX = e.clientX;
+                particles.mouseY = e.clientY;
+            });
+
+            const startTime = Date.now();
+            
+            function render() {
+                const gl = webgl.gl;
+                const currentTime = (Date.now() - startTime) * 0.001;
+
+                // Update WebGL visualization
+                gl.clearColor(0, 0, 0, 1);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+
+                gl.useProgram(webgl.program);
+                gl.bindBuffer(gl.ARRAY_BUFFER, webgl.positionBuffer);
+                gl.enableVertexAttribArray(webgl.positionAttribute);
+                gl.vertexAttribPointer(webgl.positionAttribute, 2, gl.FLOAT, false, 0, 0);
+
+                gl.uniform1f(webgl.timeUniform, currentTime);
+                gl.uniform2f(webgl.resolutionUniform, gl.canvas.width, gl.canvas.height);
+                gl.uniform2f(webgl.mouseUniform, mouseX, mouseY);
+
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                // Update and draw particle system
+                particles.update();
+                particles.draw();
+                
+                requestAnimationFrame(render);
+            }
+
+            window.addEventListener('resize', () => {
+                // Resize WebGL canvas
+                const gl = webgl.gl;
+                gl.canvas.width = window.innerWidth;
+                gl.canvas.height = window.innerHeight;
+                gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+                // Resize particle canvas
+                particleCanvas.width = window.innerWidth;
+                particleCanvas.height = window.innerHeight;
+            });
+
+            render();
+        }
+    </script>
+</body>
+</html>
