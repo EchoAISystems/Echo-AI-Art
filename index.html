@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Echo AI Art Gallery | Digital Art & Effects</title>
+    <!-- Remove the base tag as it can cause issues -->
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&display=swap');
-
         :root {
             --primary: #0a0a0a;
             --accent: #00f3b3;
@@ -27,6 +27,8 @@
             font-family: 'Space Grotesk', sans-serif;
             overflow-x: hidden;
             min-height: 100vh;
+            display: block !important;
+            opacity: 1 !important;
         }
 
         .noise {
@@ -35,10 +37,10 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwBAMAAAClLOS0AAAAElBMVEUAAAAAAAAAAAAAAAAAAAAAAADgKxmiAAAABnRSTlMDCAgPAx9KyUx7AAAAW0lEQVQ4y2MYBfQDDAEMQUCcAMUJTJJAXA7ExVCcwCQNxNVAXA3FES4MDQ0JQJwAxQlMkkBcDsTFUBzBwsDQEADECVAcwSTt4OAAxMVQnOANwRCcAA3BERBALwAAM3wqr2eLYbwAAAAASUVORK5CYII=');
             opacity: 0.05;
             z-index: -1;
             pointer-events: none;
+            background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAElBMVEUAAAAAAAAAAAAAAAAAAAAAAADgKxmiAAAABnRSTlMDCAgPAx9KyUx7AAAASUlEQVQ4y2NgGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBaNgFIyCUTAKRsEoGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGAQACtQAT1lTC8wAAAABJRU5ErkJggg==");
         }
 
         .gradient-bg {
@@ -59,6 +61,8 @@
             max-width: 1400px;
             margin: 0 auto;
             padding: 2rem;
+            position: relative;
+            
         }
 
         header {
@@ -78,11 +82,10 @@
             font-weight: 700;
             background: linear-gradient(45deg, var(--accent), var(--secondary-accent));
             -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
+            -webkit-text-fill-color: transparent;
             margin-bottom: 1rem;
             position: relative;
-            
+            z-index: 1;
         }
 
         .subtitle {
@@ -104,6 +107,7 @@
             position: relative;
             background: var(--glass);
             backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             border-radius: 1rem;
             padding: 1.5rem;
             transition: all 0.3s ease;
@@ -190,41 +194,28 @@
             h1 {
                 font-size: 3rem;
             }
-
             .gallery {
                 grid-template-columns: 1fr;
             }
         }
 
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
+        .floating {
+            animation: float 6s ease-in-out infinite;
         }
 
-        ::-webkit-scrollbar-track {
-            background: var(--primary);
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--accent);
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--secondary-accent);
-        }
-
-        /* Floating Elements Animation */
         @keyframes float {
             0% { transform: translateY(0px); }
             50% { transform: translateY(-10px); }
             100% { transform: translateY(0px); }
         }
-
-        .floating {
-            animation: float 6s ease-in-out infinite;
-        }
     </style>
 </head>
 <body>
     <div class="noise"></div>
+    <div class="gradient-bg"></div>
+    
+    <div class="container">
+        <header>
+            <div class="title-container floating">
+                <h1>Echo AI Art Gallery</h1>
+                <p class="subtitle">
